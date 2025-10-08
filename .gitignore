@@ -1,7 +1,8 @@
-# Ignore all files except .Rmd files
+# Ignore all files except .Rmd and .pdf files
 *
 !.gitignore
 !**/*.Rmd
+!**/*.pdf
 !HW1/
 !HW2/
 !HW3/
