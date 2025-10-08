@@ -1,0 +1,97 @@
+---
+title: "HW2_AppliedProblem_Design"
+output: html_notebook
+---
+
+```{r}
+sample_design = read.csv("./sample_design.csv")
+head(sample_design)
+```
+
+```{r}
+library(lhs)
+set.seed(123) # For reproducibility
+A <- randomLHS(n = 48, k = 2) # k samples, k variables
+B <- matrix(nrow = nrow(A), ncol = ncol(A))
+B[,1] <- qunif(A[,1], min = 0, max = 80) # First Chemical
+B[,2] <- qunif(A[,2], min = 0, max = 30) # Second Chemical
+```
+
+```{r}
+plot(B)
+```
+
+```{r}
+# write.table(x = B, file = "hw2_design.csv", row.names = FALSE, col.names = FALSE)
+```
+
+```{r}
+# install.packages("lhs") # Run this if you don't have the package
+library(lhs)
+library(ggplot2)
+
+# Set a seed for reproducibility
+set.seed(456)
+
+# --- Region 1: Pure Exploration (High Uncertainty) ---
+n1 <- 8
+region1_lhs <- randomLHS(n = n1, k = 2)
+region1_points <- data.frame(
+  mod1 = qunif(region1_lhs[,1], min = 70, max = 80),
+  mod2 = qunif(region1_lhs[,2], min = 10, max = 25),
+  region = "Exploration"
+)
+
+# --- Region 2: Pure Exploitation (High Mean) ---
+n2 <- 8
+region2_lhs <- randomLHS(n = n2, k = 2)
+region2_points <- data.frame(
+  mod1 = qunif(region2_lhs[,1], min = 40, max = 60),
+  mod2 = qunif(region2_lhs[,2], min = 20, max = 30),
+  region = "Exploitation"
+)
+
+# --- Region 3: The "Sweet Spot" (High Mean, High Uncertainty) ---
+n3 <- 8
+region3_lhs <- randomLHS(n = n3, k = 2)
+region3_points <- data.frame(
+  mod1 = qunif(region3_lhs[,1], min = 0, max = 20),
+  mod2 = qunif(region3_lhs[,2], min = 20, max = 30),
+  region = "Sweet Spot"
+)
+
+# --- Combine into a single data frame ---
+next_experiments <- rbind(region1_points, region2_points, region3_points)
+
+# View the first few proposed experimental settings
+head(next_experiments)
+```
+
+```{r}
+ggplot(next_experiments, aes(x = mod1, y = mod2, color = region)) +
+  geom_point(size = 3) +
+  # Add boxes to show the sampling regions
+  annotate("rect", xmin=70, xmax=80, ymin=10, ymax=25, alpha=0.1, fill="red") +
+  annotate("rect", xmin=40, xmax=60, ymin=20, ymax=30, alpha=0.1, fill="blue") +
+  annotate("rect", xmin=0, xmax=20, ymin=20, ymax=30, alpha=0.1, fill="green") +
+  # Set limits to the full experimental space
+  xlim(0, 80) +
+  ylim(0, 30) +
+  labs(
+    title = "Proposed 24 Experimental Points",
+    subtitle = "Sampled from three strategic regions using LHS",
+    x = "Modulator 1 Concentration",
+    y = "Modulator 2 Concentration",
+    color = "Strategic Region"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+write.table(
+  x = next_experiments[, c("mod1", "mod2")],
+  file = "hw2_design_2.csv",
+  row.names = FALSE,
+  col.names = FALSE
+)
+```
