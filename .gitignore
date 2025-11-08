@@ -9,3 +9,5 @@
 !HW4/
 !Paper*/
 !Paper*/*.pdf
+!Project/
+!Project/.gitkeep
