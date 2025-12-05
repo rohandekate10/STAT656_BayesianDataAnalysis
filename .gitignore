@@ -11,4 +11,19 @@
 !Paper*/
 !Paper*/*.pdf
 !Project/
-!Project/.gitkeep
+!Project/**/
+!Project/**/*.R
+!Project/**/*.csv
+!Project/**/*.png
+# Exclude NHANES Clean 1988-2018 folder
+Project/NHANES Clean 1988-2018/
+# Exclude .tex files
+Project/**/*.tex
+# Exclude large .csv and .rds files
+Project/**/X_matrix.csv
+Project/**/X_matrix.rds
+Project/nhanes_filtered_for_susie.csv
+Project/nhanes_filtered_for_susie.rds
+Project/nhanes_filtered_for_susie_backup*.rds
+Project/nhanes_processed_dataset.rds
+Project/NHANES

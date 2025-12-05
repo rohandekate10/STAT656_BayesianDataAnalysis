@@ -1,0 +1,16 @@
+Statistic,Value
+total_variables,2131
+numeric_variables,2111
+variables_50pct_complete,321
+variables_high_variance,318
+total_observations,47812
+mean_missing_pct,70.4575479677697
+median_missing_pct,70.13092947377227
+mean_abs_correlation,0.07906318821568754
+median_abs_correlation,0.034848074515646546
+high_corr_pairs,543
+very_high_corr_pairs,294
+variables_analyzed_vif,177
+variables_vif_above_threshold,36
+max_vif,209.9194484485714
+mean_vif,19.08510250915246

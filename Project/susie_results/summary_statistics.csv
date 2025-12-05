@@ -1,0 +1,17 @@
+Statistic,Value
+method,susie_rss
+n_train,8192
+n_test,12365
+n_variables,300
+n_selected_variables,11
+n_credible_sets,10
+converged,TRUE
+n_iterations,40
+train_accuracy,0.7940673828125
+train_balanced_accuracy,0.7940673828125
+test_accuracy,0.78770723817226
+test_balanced_accuracy,0.790786245426874
+train_auc,0.875122308731079
+test_auc,0.864980730166137
+train_f1,0.797162438379223
+test_f1,0.523160762942779
