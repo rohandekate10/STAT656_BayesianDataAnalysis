@@ -57,7 +57,7 @@ output_dir <- file.path(base_dir, "susie_results")
 #   Reference: https://stephenslab.github.io/susieR/reference/susie_rss.html
 #   Computes summary statistics from individual-level data automatically
 
-SUSIE_METHOD <- "susie_rss"  # Change to "susie" to use individual-level data method
+SUSIE_METHOD <- "susie"  # Using susie() with individual-level data method
 
 # ============================================================================
 
@@ -226,115 +226,115 @@ p <- ncol(X_train_scaled)
 cat("  Sample size (n):", n, "\n")
 cat("  Number of predictors (p):", p, "\n\n")
 
-# Common parameters for both methods
-L <- 10  # Number of credible sets (upper bound on non-zero effects)
-max_iter <- 200
-tol <- 0.001
+# ============================================================================
+# Load Optimal Parameters (if available from grid search)
+# ============================================================================
+optimal_params_file <- file.path(base_dir, "susie_parameter_optimization_full", "optimal_parameters.csv")
 
-if (SUSIE_METHOD == "susie_rss") {
-  # ========================================================================
-  # Method: susie_rss (Summary Statistics)
-  # ========================================================================
-  cat("  Using susie_rss() with summary statistics\n")
-  cat("  Computing summary statistics from individual-level data...\n")
+if (file.exists(optimal_params_file)) {
+  cat("  Loading optimal parameters from grid search...\n")
+  optimal_params <- read_csv(optimal_params_file, show_col_types = FALSE)
+  L <- optimal_params$L
+  scaled_prior_variance <- optimal_params$scaled_prior_variance
+  estimate_residual_variance <- optimal_params$estimate_residual_variance
+  estimate_residual_method <- optimal_params$estimate_residual_method
+  estimate_prior_variance <- optimal_params$estimate_prior_variance
+  estimate_prior_method <- optimal_params$estimate_prior_method
+  unmappable_effects <- optimal_params$unmappable_effects
+  standardize <- optimal_params$standardize
+  intercept <- optimal_params$intercept
+  null_weight <- optimal_params$null_weight
+  refine <- optimal_params$refine
+  convergence_method <- optimal_params$convergence_method
+  compute_univariate_zscore <- optimal_params$compute_univariate_zscore
+  na.rm <- optimal_params$na.rm
+  residual_variance_lowerbound <- optimal_params$residual_variance_lowerbound
+  residual_variance_upperbound <- optimal_params$residual_variance_upperbound
+  check_null_threshold <- optimal_params$check_null_threshold
+  n_purity <- optimal_params$n_purity
+  alpha0 <- optimal_params$alpha0
+  beta0 <- optimal_params$beta0
+  cat("    Using optimized parameters (see optimal_parameters.csv for full list)\n\n")
+} else {
+  cat("  Using default parameters (run optimize_susie_parameters.R to find optimal values)\n")
+  L <- min(10, p)
+  scaled_prior_variance <- 0.2
+  estimate_residual_variance <- TRUE
+  estimate_residual_method <- "MoM"
+  estimate_prior_variance <- TRUE
+  estimate_prior_method <- "optim"
+  unmappable_effects <- "none"
+  standardize <- TRUE
+  intercept <- TRUE
+  null_weight <- 0
+  refine <- FALSE
+  convergence_method <- "elbo"
+  compute_univariate_zscore <- FALSE
+  na.rm <- FALSE
+  residual_variance_lowerbound <- var(drop(y_train))/10000
+  residual_variance_upperbound <- Inf
+  check_null_threshold <- 0
+  n_purity <- 100
+  alpha0 <- 0.1
+  beta0 <- 0.1
+  cat("    Using default parameters\n\n")
+}
+
+# Fixed parameters
+prior_tol <- 1e-09
+coverage <- 0.95
+min_abs_corr <- 0.5
+max_iter <- 100
+tol <- 0.001
+verbose <- TRUE
+track_fit <- TRUE
+
+if (SUSIE_METHOD == "susie") {
+  cat("  Using susie() with individual-level data\n")
   
-  # Compute correlation matrix R
-  cat("    Computing correlation matrix R...\n")
-  # Remove variables with zero variance before computing correlation
-  var_check <- apply(X_train_scaled, 2, var, na.rm = TRUE)
-  zero_var_vars <- which(var_check < 1e-10)
-  if (length(zero_var_vars) > 0) {
-    cat("    Warning: Found", length(zero_var_vars), "variables with zero variance. Setting correlations to 0.\n")
-  }
-  
-  R <- cor(X_train_scaled, use = "pairwise.complete.obs")
-  # Handle any NA values (shouldn't happen after standardization, but just in case)
-  R[is.na(R)] <- 0
-  diag(R) <- 1  # Ensure diagonal is 1
-  
-  # Set correlations for zero-variance variables to 0
-  if (length(zero_var_vars) > 0) {
-    R[zero_var_vars, ] <- 0
-    R[, zero_var_vars] <- 0
-    diag(R)[zero_var_vars] <- 1
-  }
-  
-  # Compute z-scores from univariate regressions
-  # z = bhat / shat, where bhat and shat come from y ~ X[,j] for each j
-  cat("    Computing z-scores from univariate regressions...\n")
-  z_scores <- numeric(p)
-  for (j in 1:p) {
-    # Check for constant or near-constant variables
-    x_var <- X_train_scaled[, j]
-    if (var(x_var, na.rm = TRUE) < 1e-10) {
-      # Variable has zero or near-zero variance
-      z_scores[j] <- 0
-      next
-    }
-    
-    # Fit simple linear regression: y ~ X[,j]
-    tryCatch({
-      fit_univariate <- lm(y_train ~ x_var)
-      coef_summary <- summary(fit_univariate)$coefficients
-      
-      # Check if coefficient exists and is valid
-      if (nrow(coef_summary) >= 2 && !is.na(coef_summary[2, 1]) && !is.na(coef_summary[2, 2])) {
-        bhat <- coef_summary[2, 1]  # Coefficient for X[,j]
-        shat <- coef_summary[2, 2]  # Standard error
-        if (abs(shat) > 1e-10) {
-          z_scores[j] <- bhat / shat
-        } else {
-          z_scores[j] <- 0
-        }
-      } else {
-        z_scores[j] <- 0
-      }
-    }, error = function(e) {
-      # If regression fails, set z-score to 0
-      z_scores[j] <<- 0
-    })
-  }
-  
-  cat("    Summary statistics computed:\n")
-  cat("      z-scores: mean =", round(mean(abs(z_scores)), 4), 
-      ", max =", round(max(abs(z_scores)), 4), "\n")
-  cat("      Correlation matrix:", nrow(R), "x", ncol(R), "\n\n")
-  
-  # Fit SuSiE-RSS model
-  cat("  Fitting susie_rss model...\n")
-  fit <- susie_rss(z = z_scores,
-                   R = R,
-                   n = n,
-                   L = L,
-                   estimate_residual_variance = TRUE,
-                   estimate_prior_variance = TRUE,
-                   scaled_prior_variance = 0.2,
-                   max_iter = max_iter,
-                   tol = tol,
-                   verbose = TRUE,
-                   refine = FALSE)
-  
-} else if (SUSIE_METHOD == "susie") {
-  # ========================================================================
-  # Method: susie (Individual-Level Data)
-  # ========================================================================
-  cat("  Using susie() with individual-level data (X, y matrices)\n")
-  cat("  Reference: https://stephenslab.github.io/susieR/reference/susie.html\n\n")
-  
-  # Fit SuSiE model with individual-level data
-  cat("  Fitting susie model...\n")
-  fit <- susie(X_train_scaled, y_train, 
-               L = L,
-               estimate_residual_variance = TRUE,
-               estimate_prior_variance = TRUE,
-               scaled_prior_variance = 0.2,
-               max_iter = max_iter,
-               tol = tol,
-               verbose = TRUE,
-               refine = FALSE)
+  # Fit SuSiE model with optimal or default parameters
+  cat("  Starting SuSiE execution...\n")
+  susie_start_time <- Sys.time()
+  fit <- susie(
+    X = X_train_scaled,
+    y = y_train,
+    L = L,
+    scaled_prior_variance = scaled_prior_variance,
+    residual_variance = NULL,
+    prior_weights = NULL,
+    null_weight = null_weight,
+    standardize = standardize,
+    intercept = intercept,
+    estimate_residual_variance = estimate_residual_variance,
+    estimate_residual_method = estimate_residual_method,
+    estimate_prior_variance = estimate_prior_variance,
+    estimate_prior_method = estimate_prior_method,
+    unmappable_effects = unmappable_effects,
+    check_null_threshold = check_null_threshold,
+    prior_tol = prior_tol,
+    residual_variance_upperbound = residual_variance_upperbound,
+    model_init = NULL,
+    coverage = coverage,
+    min_abs_corr = min_abs_corr,
+    compute_univariate_zscore = compute_univariate_zscore,
+    na.rm = na.rm,
+    max_iter = max_iter,
+    tol = tol,
+    convergence_method = convergence_method,
+    verbose = verbose,
+    track_fit = track_fit,
+    residual_variance_lowerbound = residual_variance_lowerbound,
+    refine = refine,
+    n_purity = n_purity,
+    alpha0 = alpha0,
+    beta0 = beta0
+  )
+  susie_end_time <- Sys.time()
+  susie_execution_time <- as.numeric(difftime(susie_end_time, susie_start_time, units = "secs"))
+  cat("  SuSiE execution time:", round(susie_execution_time, 2), "seconds\n")
   
 } else {
-  stop("Invalid SUSIE_METHOD. Must be 'susie' or 'susie_rss'")
+  stop("SUSIE_METHOD must be 'susie' for this script")
 }
 
 cat("  SuSiE-R fit completed\n")
@@ -381,90 +381,46 @@ cat("\n")
 
 cat("Step 5: Making predictions...\n")
 
-# Get coefficients based on method used
-if (SUSIE_METHOD == "susie_rss") {
-  # For susie_rss, use susie_get_posterior_mean() to get posterior mean coefficients
-  cat("  Extracting coefficients from susie_rss fit...\n")
-  coef_posterior <- susie_get_posterior_mean(fit)
-  
-  if (length(coef_posterior) != p) {
-    cat("  WARNING: Coefficient length mismatch. Using PIP-based selection.\n")
-    # Fall back to using high PIP variables
-    high_pip_vars <- which(fit$pip > 0.5)
-    if (length(high_pip_vars) > 0) {
-      cat("  Using", length(high_pip_vars), "variables with PIP > 0.5\n")
-      # Fit simple logistic regression on high PIP variables
-      X_train_selected <- X_train_scaled[, high_pip_vars, drop = FALSE]
-      X_test_selected <- X_test_scaled[, high_pip_vars, drop = FALSE]
-      train_df <- data.frame(y = y_train, X_train_selected)
-      test_df <- data.frame(y = y_test, X_test_selected)
-      glm_fit <- glm(y ~ ., data = train_df, family = binomial)
-      y_train_prob <- as.vector(predict(glm_fit, newdata = train_df, type = "response"))
-      y_test_prob <- as.vector(predict(glm_fit, newdata = test_df, type = "response"))
-      y_train_pred_class <- ifelse(y_train_prob > 0.5, 1, 0)
-      y_test_pred_class <- ifelse(y_test_prob > 0.5, 1, 0)
-      coef <- coef(glm_fit)
-    } else {
-      stop("No variables selected. Cannot make predictions.")
+# Get coefficients from susie fit
+cat("  Extracting coefficients from susie fit...\n")
+coef <- coef(fit)
+
+# Check coefficient format
+if (length(coef) == p + 1) {
+  # Has intercept
+  y_train_pred <- as.vector(X_train_scaled %*% coef[-1] + coef[1])
+  y_test_pred <- as.vector(X_test_scaled %*% coef[-1] + coef[1])
+} else if (length(coef) == p) {
+  # No intercept (or intercept is separate)
+  y_train_pred <- as.vector(X_train_scaled %*% coef)
+  y_test_pred <- as.vector(X_test_scaled %*% coef)
+} else {
+  # Sparse coefficients - create full vector
+  coef_vec <- numeric(p)
+  if (length(coef) > 1) {
+    # Assume first element is intercept
+    n_coef <- min(length(coef)-1, p)
+    if (n_coef > 0) {
+      coef_vec[seq_len(n_coef)] <- coef[-1]
     }
+    intercept <- coef[1]
   } else {
-    # Use posterior mean coefficients from susie_rss
-    # Linear predictor (no intercept needed for standardized data)
-    y_train_pred <- as.vector(X_train_scaled %*% coef_posterior)
-    y_test_pred <- as.vector(X_test_scaled %*% coef_posterior)
-    
-    # Convert linear predictor to probabilities (logistic transformation)
-    y_train_prob <- as.vector(1 / (1 + exp(-y_train_pred)))
-    y_test_prob <- as.vector(1 / (1 + exp(-y_test_pred)))
-    y_train_pred_class <- ifelse(y_train_prob > 0.5, 1, 0)
-    y_test_pred_class <- ifelse(y_test_prob > 0.5, 1, 0)
-    
-    # Store coefficients (add intercept = 0 for standardized data)
-    coef <- c(0, coef_posterior)
-  }
-  
-} else if (SUSIE_METHOD == "susie") {
-  # For susie, use coef() to get coefficients
-  cat("  Extracting coefficients from susie fit...\n")
-  coef <- coef(fit)
-  
-  # Check coefficient format
-  if (length(coef) == p + 1) {
-    # Has intercept
-    y_train_pred <- as.vector(X_train_scaled %*% coef[-1] + coef[1])
-    y_test_pred <- as.vector(X_test_scaled %*% coef[-1] + coef[1])
-  } else if (length(coef) == p) {
-    # No intercept (or intercept is separate)
-    y_train_pred <- as.vector(X_train_scaled %*% coef)
-    y_test_pred <- as.vector(X_test_scaled %*% coef)
-  } else {
-    # Sparse coefficients - create full vector
-    coef_vec <- numeric(p)
-    if (length(coef) > 1) {
-      # Assume first element is intercept
-      n_coef <- min(length(coef)-1, p)
-      if (n_coef > 0) {
-        coef_vec[seq_len(n_coef)] <- coef[-1]
-      }
-      intercept <- coef[1]
-    } else {
-      n_coef <- min(length(coef), p)
-      if (n_coef > 0) {
-        coef_vec[seq_len(n_coef)] <- coef
-      }
-      intercept <- 0
+    n_coef <- min(length(coef), p)
+    if (n_coef > 0) {
+      coef_vec[seq_len(n_coef)] <- coef
     }
-    y_train_pred <- as.vector(X_train_scaled %*% coef_vec + intercept)
-    y_test_pred <- as.vector(X_test_scaled %*% coef_vec + intercept)
-    coef <- c(intercept, coef_vec)
+    intercept <- 0
   }
-  
-  # Convert linear predictor to probabilities (logistic transformation)
-  y_train_prob <- as.vector(1 / (1 + exp(-y_train_pred)))
-  y_test_prob <- as.vector(1 / (1 + exp(-y_test_pred)))
-  y_train_pred_class <- ifelse(y_train_prob > 0.5, 1, 0)
-  y_test_pred_class <- ifelse(y_test_prob > 0.5, 1, 0)
+  y_train_pred <- as.vector(X_train_scaled %*% coef_vec + intercept)
+  y_test_pred <- as.vector(X_test_scaled %*% coef_vec + intercept)
+  coef <- c(intercept, coef_vec)
 }
+
+# Convert linear predictor to probabilities (logistic transformation)
+y_train_prob <- as.vector(1 / (1 + exp(-y_train_pred)))
+y_test_prob <- as.vector(1 / (1 + exp(-y_test_pred)))
+y_train_pred_class <- ifelse(y_train_prob > 0.5, 1, 0)
+y_test_pred_class <- ifelse(y_test_prob > 0.5, 1, 0)
 
 cat("  Predictions generated for training and test sets\n")
 cat("  Training prediction range:", round(range(y_train_prob, na.rm = TRUE), 4), "\n")
@@ -1051,6 +1007,7 @@ summary_stats <- list(
   n_credible_sets = length(fit$sets$cs),
   converged = fit$converged,
   n_iterations = fit$niter,
+  susie_execution_time_seconds = if(exists("susie_execution_time")) susie_execution_time else NA,
   train_accuracy = metrics_train$Accuracy,
   train_balanced_accuracy = metrics_train$Balanced_Accuracy,
   test_accuracy = metrics_test$Accuracy,

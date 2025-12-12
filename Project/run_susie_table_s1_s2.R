@@ -47,7 +47,7 @@ if (!dir.exists(output_dir)) {
 # CONFIGURATION: Choose SuSiE method
 # ============================================================================
 
-SUSIE_METHOD <- "susie_rss"  # Change to "susie" to use individual-level data method
+SUSIE_METHOD <- "susie"  # Using susie() with individual-level data method
 
 # ============================================================================
 # Define Table S1 and S2 Variables
@@ -346,66 +346,115 @@ p <- ncol(X_train_scaled)
 cat("  Sample size (n):", n, "\n")
 cat("  Number of predictors (p):", p, "\n\n")
 
-L <- 10
-max_iter <- 200
-tol <- 0.001
+# ============================================================================
+# Load Optimal Parameters (if available from grid search)
+# ============================================================================
+optimal_params_file <- file.path(base_dir, "susie_parameter_optimization_table_s1_s2", "optimal_parameters.csv")
 
-if (SUSIE_METHOD == "susie_rss") {
-  cat("  Using susie_rss() with summary statistics\n")
+if (file.exists(optimal_params_file)) {
+  cat("  Loading optimal parameters from grid search...\n")
+  optimal_params <- read_csv(optimal_params_file, show_col_types = FALSE)
+  L <- optimal_params$L
+  scaled_prior_variance <- optimal_params$scaled_prior_variance
+  estimate_residual_variance <- optimal_params$estimate_residual_variance
+  estimate_residual_method <- optimal_params$estimate_residual_method
+  estimate_prior_variance <- optimal_params$estimate_prior_variance
+  estimate_prior_method <- optimal_params$estimate_prior_method
+  unmappable_effects <- optimal_params$unmappable_effects
+  standardize <- optimal_params$standardize
+  intercept <- optimal_params$intercept
+  null_weight <- optimal_params$null_weight
+  refine <- optimal_params$refine
+  convergence_method <- optimal_params$convergence_method
+  compute_univariate_zscore <- optimal_params$compute_univariate_zscore
+  na.rm <- optimal_params$na.rm
+  residual_variance_lowerbound <- optimal_params$residual_variance_lowerbound
+  residual_variance_upperbound <- optimal_params$residual_variance_upperbound
+  check_null_threshold <- optimal_params$check_null_threshold
+  n_purity <- optimal_params$n_purity
+  alpha0 <- optimal_params$alpha0
+  beta0 <- optimal_params$beta0
+  cat("    Using optimized parameters (see optimal_parameters.csv for full list)\n\n")
+} else {
+  cat("  Using default parameters (run optimize_susie_parameters.R to find optimal values)\n")
+  L <- min(10, p)
+  scaled_prior_variance <- 0.2
+  estimate_residual_variance <- TRUE
+  estimate_residual_method <- "MoM"
+  estimate_prior_variance <- TRUE
+  estimate_prior_method <- "optim"
+  unmappable_effects <- "none"
+  standardize <- TRUE
+  intercept <- TRUE
+  null_weight <- 0
+  refine <- FALSE
+  convergence_method <- "elbo"
+  compute_univariate_zscore <- FALSE
+  na.rm <- FALSE
+  residual_variance_lowerbound <- var(drop(y_train))/10000
+  residual_variance_upperbound <- Inf
+  check_null_threshold <- 0
+  n_purity <- 100
+  alpha0 <- 0.1
+  beta0 <- 0.1
+  cat("    Using default parameters\n\n")
+}
+
+# Fixed parameters
+prior_tol <- 1e-09
+coverage <- 0.95
+min_abs_corr <- 0.5
+max_iter <- 100
+tol <- 0.001
+verbose <- TRUE
+track_fit <- TRUE
+
+if (SUSIE_METHOD == "susie") {
+  cat("  Using susie() with individual-level data\n")
   
-  # Compute correlation matrix R
-  R <- cor(X_train_scaled, use = "pairwise.complete.obs")
-  R[is.na(R)] <- 0
-  diag(R) <- 1
-  
-  # Compute z-scores from univariate regressions
-  z_scores <- numeric(p)
-  for (j in 1:p) {
-    if (var(X_train_scaled[, j], na.rm = TRUE) < 1e-10) {
-      z_scores[j] <- 0
-      next
-    }
-    tryCatch({
-      fit_univariate <- lm(y_train ~ X_train_scaled[, j])
-      coef_summary <- summary(fit_univariate)$coefficients
-      if (nrow(coef_summary) >= 2 && !is.na(coef_summary[2, 1]) && !is.na(coef_summary[2, 2])) {
-        bhat <- coef_summary[2, 1]
-        shat <- coef_summary[2, 2]
-        if (abs(shat) > 1e-10) {
-          z_scores[j] <- bhat / shat
-        }
-      }
-    }, error = function(e) {
-      z_scores[j] <<- 0
-    })
-  }
-  
-  cat("  Summary statistics computed\n")
-  
-  # Fit SuSiE-RSS model
-  fit <- susie_rss(z = z_scores,
-                   R = R,
-                   n = n,
-                   L = L,
-                   estimate_residual_variance = TRUE,
-                   estimate_prior_variance = TRUE,
-                   scaled_prior_variance = 0.2,
-                   max_iter = max_iter,
-                   tol = tol,
-                   verbose = TRUE,
-                   refine = FALSE)
+  # Fit SuSiE model with optimal or default parameters
+  cat("  Starting SuSiE execution...\n")
+  susie_start_time <- Sys.time()
+  fit <- susie(
+    X = X_train_scaled,
+    y = y_train,
+    L = L,
+    scaled_prior_variance = scaled_prior_variance,
+    residual_variance = NULL,
+    prior_weights = NULL,
+    null_weight = null_weight,
+    standardize = standardize,
+    intercept = intercept,
+    estimate_residual_variance = estimate_residual_variance,
+    estimate_residual_method = estimate_residual_method,
+    estimate_prior_variance = estimate_prior_variance,
+    estimate_prior_method = estimate_prior_method,
+    unmappable_effects = unmappable_effects,
+    check_null_threshold = check_null_threshold,
+    prior_tol = prior_tol,
+    residual_variance_upperbound = residual_variance_upperbound,
+    model_init = NULL,
+    coverage = coverage,
+    min_abs_corr = min_abs_corr,
+    compute_univariate_zscore = compute_univariate_zscore,
+    na.rm = na.rm,
+    max_iter = max_iter,
+    tol = tol,
+    convergence_method = convergence_method,
+    verbose = verbose,
+    track_fit = track_fit,
+    residual_variance_lowerbound = residual_variance_lowerbound,
+    refine = refine,
+    n_purity = n_purity,
+    alpha0 = alpha0,
+    beta0 = beta0
+  )
+  susie_end_time <- Sys.time()
+  susie_execution_time <- as.numeric(difftime(susie_end_time, susie_start_time, units = "secs"))
+  cat("  SuSiE execution time:", round(susie_execution_time, 2), "seconds\n")
   
 } else {
-  cat("  Using susie() with individual-level data\n")
-  fit <- susie(X_train_scaled, y_train, 
-               L = L,
-               estimate_residual_variance = TRUE,
-               estimate_prior_variance = TRUE,
-               scaled_prior_variance = 0.2,
-               max_iter = max_iter,
-               tol = tol,
-               verbose = TRUE,
-               refine = FALSE)
+  stop("SUSIE_METHOD must be 'susie' for this script")
 }
 
 cat("\n  SuSiE-R fit completed\n")
@@ -454,28 +503,16 @@ cat("Step 7: Making predictions and calculating performance metrics...\n")
 
 var_names <- colnames(X_matrix)
 
-if (SUSIE_METHOD == "susie_rss") {
-  coef_posterior <- susie_get_posterior_mean(fit)
-  y_train_pred <- as.vector(X_train_scaled %*% coef_posterior)
-  y_test_pred <- as.vector(X_test_scaled %*% coef_posterior)
-  
-  y_train_prob <- as.vector(1 / (1 + exp(-y_train_pred)))
-  y_test_prob <- as.vector(1 / (1 + exp(-y_test_pred)))
-  
-  # Store coefficients for later use
-  coef <- c(0, coef_posterior)
+coef <- coef(fit)
+if (length(coef) == p + 1) {
+  y_train_pred <- as.vector(X_train_scaled %*% coef[-1] + coef[1])
+  y_test_pred <- as.vector(X_test_scaled %*% coef[-1] + coef[1])
 } else {
-  coef <- coef(fit)
-  if (length(coef) == p + 1) {
-    y_train_pred <- as.vector(X_train_scaled %*% coef[-1] + coef[1])
-    y_test_pred <- as.vector(X_test_scaled %*% coef[-1] + coef[1])
-  } else {
-    y_train_pred <- as.vector(X_train_scaled %*% coef)
-    y_test_pred <- as.vector(X_test_scaled %*% coef)
-  }
-  y_train_prob <- as.vector(1 / (1 + exp(-y_train_pred)))
-  y_test_prob <- as.vector(1 / (1 + exp(-y_test_pred)))
+  y_train_pred <- as.vector(X_train_scaled %*% coef)
+  y_test_pred <- as.vector(X_test_scaled %*% coef)
 }
+y_train_prob <- as.vector(1 / (1 + exp(-y_train_pred)))
+y_test_prob <- as.vector(1 / (1 + exp(-y_test_pred)))
 
 y_train_pred_class <- ifelse(y_train_prob > 0.5, 1, 0)
 y_test_pred_class <- ifelse(y_test_prob > 0.5, 1, 0)
@@ -1042,6 +1079,7 @@ summary_stats <- list(
   n_credible_sets = length(fit$sets$cs),
   converged = fit$converged,
   n_iterations = fit$niter,
+  susie_execution_time_seconds = if(exists("susie_execution_time")) susie_execution_time else NA,
   train_accuracy = metrics_train$Accuracy,
   train_balanced_accuracy = metrics_train$Balanced_Accuracy,
   test_accuracy = metrics_test$Accuracy,
