@@ -1,8 +1,8 @@
 Metric,Training,Test
-Accuracy,0.6595,0.6476
-Balanced Accuracy,0.6595,0.6614
-AUC,0.7175,0.7166
-Recall,0.6819,0.6808
-Specificity,0.6372,0.6419
-Precision,0.6527,0.246
-F1-Score,0.667,0.3614
+Accuracy,0.6754,0.6558
+Balanced Accuracy,0.6754,0.671
+AUC,0.7331,0.7282
+Recall,0.7019,0.6924
+Specificity,0.6489,0.6495
+Precision,0.6666,0.2532
+F1-Score,0.6838,0.3708

@@ -1,0 +1,6 @@
+Metric,SuSiE,Random_Forest,Difference
+ACC (Balanced Accuracy),0.671,0.82,-0.149
+AUC,0.7282,0.88,-0.1518
+Recall,0.6924,0.82,-0.1276
+Precision,0.2532,0.82,-0.5668
+F1-Score,0.3708,0.82,-0.4492
